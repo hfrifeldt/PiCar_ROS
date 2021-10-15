@@ -38,81 +38,21 @@ class PWM(object):
     _INVRT              = 0x10
     _OUTDRV             = 0x04
 
-    RPI_REVISION_0 = ["900092"]
-    RPI_REVISION_1_MODULE_B = ["Beta", "0002", "0003", "0004", "0005", "0006", "000d", "000e", "000f"]
-    RPI_REVISION_1_MODULE_A = ["0007", "0008", "0009",]
-    RPI_REVISION_1_MODULE_BP = ["0010", "0013"]
-    RPI_REVISION_1_MODULE_AP = ["0012"]
-    RPI_REVISION_2 = ["a01041", "a21041"]
-    RPI_REVISION_3 = ["a02082", "a22082"]
-
     _DEBUG = False
     _DEBUG_INFO = 'DEBUG "PCA9685.py":'
 
-    def _get_bus_number(self):
-        pi_revision = self._get_pi_revision()
-        if   pi_revision == '0':
-            return 0
-        elif pi_revision == '1 Module B':
-            return 0
-        elif pi_revision == '1 Module A':
-            return 0
-        elif pi_revision == '1 Module B+':
-            return 1
-        elif pi_revision == '1 Module A+':
-            return 0
-        elif pi_revision == '2 Module B':
-            return 1
-        elif pi_revision == '3 Module B':
-            return 1
-
-    def _get_pi_revision(self):
-        "Gets the version number of the Raspberry Pi board"
-        # Courtesy quick2wire-python-api
-        # https://github.com/quick2wire/quick2wire-python-api
-        # Updated revision info from: http://elinux.org/RPi_HardwareHistory#Board_Revision_History
-        try:
-            f = open('/proc/cpuinfo','r')
-            for line in f:
-                if line.startswith('Revision'):
-                    if line[11:-1] in self.RPI_REVISION_0:
-                        return '0'
-                    elif line[11:-1] in self.RPI_REVISION_1_MODULE_B:
-                        return '1 Module B'
-                    elif line[11:-1] in self.RPI_REVISION_1_MODULE_A:
-                        return '1 Module A'
-                    elif line[11:-1] in self.RPI_REVISION_1_MODULE_BP:
-                        return '1 Module B+'
-                    elif line[11:-1] in self.RPI_REVISION_1_MODULE_AP:
-                        return '1 Module A+'
-                    elif line[11:-1] in self.RPI_REVISION_2:
-                        return '2 Module B'
-                    elif line[11:-1] in self.RPI_REVISION_3:
-                        return '3 Module B'
-                    else:
-                        print "Error. Pi revision didn't recognize, module number: %s" % line[11:-1]
-                        print 'Exiting...'
-                        quit()
-        except Exception, e:
-            f.close()
-            print e
-            print 'Exiting...'
-            quit()
-        finally:
-            f.close()
-
-    def __init__(self, bus_number=None, address=0x40):
+    def __init__(self, bus_number=1, address=0x40):
         self.address = address
-        if bus_number == None:
-            self.bus_number = self._get_bus_number()
-        else:
-            self.bus_number = bus_number
+        self.bus_number = bus_number
         self.bus = smbus.SMBus(self.bus_number)
 
+    def _debug_(self,message):
+        if self._DEBUG:
+            print(self._DEBUG_INFO,message)
+    
     def setup(self):
         '''Init the class with bus_number and address'''
-        if self._DEBUG:
-            print self._DEBUG_INFO, 'Reseting PCA9685 MODE1 (without SLEEP) and MODE2'
+        self._debug_('Reseting PCA9685 MODE1 (without SLEEP) and MODE2')
         self.write_all_value(0, 0)
         self._write_byte_data(self._MODE2, self._OUTDRV)
         self._write_byte_data(self._MODE1, self._ALLCALL)
@@ -126,85 +66,89 @@ class PWM(object):
 
     def _write_byte_data(self, reg, value):
         '''Write data to I2C with self.address'''
-        if self._DEBUG:
-            print self._DEBUG_INFO, 'Writing value %2X to %2X' % (value, reg)
+        self._debug_('Writing value %2X to %2X' % (value, reg))
         try:
             self.bus.write_byte_data(self.address, reg, value)
-        except Exception, i:
-            print i
+        except Exception as i:
+            print(i)
             self._check_i2c()
 
     def _read_byte_data(self, reg):
         '''Read data from I2C with self.address'''
-        if self._DEBUG:
-            print self._DEBUG_INFO, 'Reading value from %2X' % reg
+        self._debug_('Reading value from %2X' % reg)
         try:
             results = self.bus.read_byte_data(self.address, reg)
             return results
-        except Exception, i:
-            print i
+        except Exception as i:
+            print(i)
             self._check_i2c()
 
+    def _run_command(self, cmd):
+        import subprocess
+        p = subprocess.Popen(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        result = p.stdout.read().decode('utf-8')
+        status = p.poll()
+        # print(result)
+        # print(status)
+        return status, result
+
     def _check_i2c(self):
-        import commands
-        bus_number = self._get_bus_number()
-        print "\nYour Pi Rivision is: %s" % self._get_pi_revision()
-        print "I2C bus number is: %s" % bus_number
-        print "Checking I2C device:"
-        cmd = "ls /dev/i2c-%d" % bus_number
-        output = commands.getoutput(cmd)
-        print 'Commands "%s" output:' % cmd
-        print output
-        if '/dev/i2c-%d' % bus_number in output.split(' '):
-            print "I2C device setup OK"
+        from os import listdir
+        print("I2C bus number is: %s" % self.bus_number)
+        print("Checking I2C device:")
+        devices = listdir("/dev/")
+        if "i2c-%d" % self.bus_number in devices:
+            print("I2C device exist.")
         else:
-            print "Seems like I2C have not been set, Use 'sudo raspi-config' to set I2C"
+            print("Seems like I2C have not been set, run 'sudo raspi-config' to enable I2C")
         cmd = "i2cdetect -y %s" % self.bus_number
-        output = commands.getoutput(cmd)
-        print "Your PCA9685 address is set to 0x%02X" % self.address
-        print "i2cdetect output:"
-        print output
+        _, output = self._run_command(cmd)
+        print("Your PCA9685 address is set to 0x%02X" % self.address)
+        print("i2cdetect output:")
+        print(output)
         outputs = output.split('\n')[1:]
         addresses = []
         for tmp_addresses in outputs:
-            tmp_addresses = tmp_addresses.split(':')[1]
+            tmp_addresses = tmp_addresses.split(':')
+            if len(tmp_addresses) < 2:
+                continue
+            else:
+                tmp_addresses = tmp_addresses[1]
             tmp_addresses = tmp_addresses.strip().split(' ')
             for address in tmp_addresses:
                 if address != '--':
                     addresses.append(address)
-        print "Conneceted i2c device:"
+        print("Conneceted i2c device:")
         if addresses == []:
-            print "None"
+            print("None")
         else:
             for address in addresses:
-                print "  0x%s" % address
+                print("  0x%s" % address)
         if "%02X" % self.address in addresses:
-            print "Wierd, I2C device is connected, Try to run the program again, If problem stills, email this information to support@sunfounder.com"
+            print("Wierd, I2C device is connected, Try to run the program again, If problem stills, email this information to support@sunfounder.com")
         else:
-            print "Device is missing."
-            print "Check the address or wiring of PCA9685 Server driver, or email this information to support@sunfounder.com"
-        raise IOError('IO error')
+            print("Device is missing.")
+            print("Check the address or wiring of PCA9685 Server driver, or email this information to support@sunfounder.com")
+            quit()
 
     @property
     def frequency(self):
-        return _frequency
+        return self._frequency
 
     @frequency.setter
     def frequency(self, freq):
         '''Set PWM frequency'''
-        if self._DEBUG:
-            print self._DEBUG_INFO, 'Set frequency to %d' % freq
+        self._debug_('Set frequency to %d' % freq)
         self._frequency = freq
         prescale_value = 25000000.0
         prescale_value /= 4096.0
         prescale_value /= float(freq)
         prescale_value -= 1.0
-        if self._DEBUG:
-            print self._DEBUG_INFO, 'Setting PWM frequency to %d Hz' % freq
-            print self._DEBUG_INFO, 'Estimated pre-scale: %d' % prescale_value
+        self._debug_('Setting PWM frequency to %d Hz' % freq)
+        self._debug_('Estimated pre-scale: %d' % prescale_value)
         prescale = math.floor(prescale_value + 0.5)
-        if self._DEBUG:
-            print self._DEBUG_INFO, 'Final pre-scale: %d' % prescale
+        self._debug_('Final pre-scale: %d' % prescale)
 
         old_mode = self._read_byte_data(self._MODE1);
         new_mode = (old_mode & 0x7F) | 0x10
@@ -216,8 +160,7 @@ class PWM(object):
 
     def write(self, channel, on, off):
         '''Set on and off value on specific channel'''
-        if self._DEBUG:
-            print self._DEBUG_INFO, 'Set channel "%d" to value "%d"' % (channel, off)
+        self._debug_('Set channel "%d" to value "%d"' % (channel, off))
         self._write_byte_data(self._LED0_ON_L+4*channel, on & 0xFF)
         self._write_byte_data(self._LED0_ON_H+4*channel, on >> 8)
         self._write_byte_data(self._LED0_OFF_L+4*channel, off & 0xFF)
@@ -225,8 +168,7 @@ class PWM(object):
 
     def write_all_value(self, on, off):
         '''Set on and off value on all channel'''
-        if self._DEBUG:
-            print self._DEBUG_INFO, 'Set all channel to value "%d"' % (off)
+        self._debug_('Set all channel to value "%d"' % (off))
         self._write_byte_data(self._ALL_LED_ON_L, on & 0xFF)
         self._write_byte_data(self._ALL_LED_ON_H, on >> 8)
         self._write_byte_data(self._ALL_LED_OFF_L, off & 0xFF)
@@ -249,9 +191,9 @@ class PWM(object):
             raise ValueError('debug must be "True" (Set debug on) or "False" (Set debug off), not "{0}"'.format(debug))
 
         if self._DEBUG:
-            print self._DEBUG_INFO, "Set debug on"
+            print(self._DEBUG_INFO, "Set debug on")
         else:
-            print self._DEBUG_INFO, "Set debug off"
+            print(self._DEBUG_INFO, "Set debug off")
 
 if __name__ == '__main__':
     import time
@@ -260,9 +202,9 @@ if __name__ == '__main__':
     pwm.frequency = 60
     for i in range(16):
         time.sleep(0.5)
-        print '\nChannel %d\n' % i
+        print('\nChannel %d\n' % i)
         time.sleep(0.5)
         for j in range(4096):
             pwm.write(i, 0, j)
-            print 'PWM value: %d' % j
+            print('PWM value: %d' % j)
             time.sleep(0.0003)
