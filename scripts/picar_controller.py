@@ -23,18 +23,18 @@ def callback(msg):
     rospy.loginfo(rospy.get_caller_id() + "Twist %s", msg)
 
     if(msg.linear.x > 0.1):
-	bw.forward()
-	bw.speed = int(100 * msg.linear.x)
+        bw.forward()
+        bw.speed = int(100 * msg.linear.x)
     elif(msg.linear.x < -0.1):
-	bw.backward()
-	bw.speed = int(100 * -msg.linear.x)
+        bw.backward()
+        bw.speed = int(100 * -msg.linear.x)
     else:
-	bw.stop()
+        bw.stop()
 
     if(msg.angular.z > 0.1 or msg.angular.z < -0.1):
-	fw.turn( int(90 - 20 * msg.angular.z) )
+        fw.turn( int(90 - 20 * msg.angular.z) )
     else:
-	fw.turn_straight()
+        fw.turn_straight()
 
 def picar_controller():
 
@@ -57,12 +57,12 @@ def stop():
 
 if __name__ == '__main__':
     try:
-	picar_controller()
+        picar_controller()
     except KeyboardInterrupt:
-        print "KeyboardInterrupt, motor stop"
+        print("KeyboardInterrupt, motor stop")
         stop()
     except rospy.ROSInterruptException:
-	stop()
-	pass
+        stop()
+        pass
     finally:
-	stop()
+        stop()
